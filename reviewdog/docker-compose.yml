@@ -1,0 +1,23 @@
+# 构建 reviewdog CI 镜像: docker compose build
+# 推送 reviewdog CI 镜像: docker compose push
+# 版本号与镜像仓库统一在 .env 中维护 (REVIEWDOG_VERSION / REGISTRY, 从 .env.example 复制)
+services:
+  reviewdog:
+    image: ${REGISTRY:-}/reviewdog-ci:${REVIEWDOG_VERSION:-0.21.3}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        REVIEWDOG_VERSION: ${REVIEWDOG_VERSION:-0.21.3}
+    # 默认打印版本即退; 需要验证推送 GitLab 时按 README「本地运行」用 docker run
+    # (须挂载目标仓库到 /src, 并把 SARIF 接到 stdin — reviewdog 不支持文件路径参数)
+    command: ["--version"]
+    environment:
+      # 本地手动运行的 GitLab 侧配置, 值从 .env 插值
+      CI_API_V4_URL: ${CI_API_V4_URL:-}
+      CI_REPO_OWNER: ${CI_REPO_OWNER:-}
+      CI_REPO_NAME: ${CI_REPO_NAME:-}
+      CI_MERGE_REQUEST_IID: ${CI_MERGE_REQUEST_IID:-}
+      CI_COMMIT_SHA: ${CI_COMMIT_SHA:-}
+      CI_MERGE_REQUEST_DIFF_BASE_SHA: ${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}
+      REVIEWDOG_GITLAB_API_TOKEN: ${REVIEWDOG_GITLAB_API_TOKEN:-}
