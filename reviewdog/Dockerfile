@@ -2,8 +2,7 @@
 # 用于审查完成后把 ocr 产出的 SARIF findings 以行内评论推回 GitLab MR (gitlab-mr-discussion).
 # GitLab 凭证运行时经环境变量注入 (REVIEWDOG_GITLAB_API_TOKEN 等), 禁止打入镜像.
 #
-# 二进制取法说明: GitHub release 直连与 gh 镜像在当前网络不可达, 但 goproxy.cn 可达,
-# 故经 golang 构建阶段 go install 固定版本源码编译 (与本地手动 go install 同源),
+# 二进制取法说明: 经 golang 构建阶段 go install 固定版本源码编译,
 # 纯 Go 静态编译, 最终镜像为 alpine + git + ca-certificates + reviewdog 单二进制.
 # 基础镜像版本须 >= reviewdog go.mod 的 toolchain 要求 (v0.21.3 为 go1.27.3):
 # 用 GOTOOLCHAIN=local 禁止运行时下载更新 toolchain, 构建环境零外联依赖 dl.google.com.
@@ -11,8 +10,9 @@ FROM golang:1.27.3-alpine AS builder
 
 # 固定版本, 避免上游升级引入不可控变更
 ARG REVIEWDOG_VERSION=0.21.3
-# goproxy.cn 优先直连兜底; CGO 置 0 保证静态链接
-RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct \
+# 国内网络可取消注释改用国内源; 默认官方源
+# ARG GOPROXY=https://goproxy.cn,direct
+RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=${GOPROXY} \
   go install github.com/reviewdog/reviewdog/cmd/reviewdog@v${REVIEWDOG_VERSION}
 
 # 运行镜像: alpine 自带 git 版本 >= 2.45, 满足 reviewdog 的 git diff 需求.

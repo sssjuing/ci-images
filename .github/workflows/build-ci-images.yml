@@ -1,0 +1,111 @@
+# 在 GitHub Actions 上构建 CI 工具镜像并推送 GHCR:
+# GitHub runner 直连 Docker Hub 基础镜像与 npm/Go 官方源.
+# 推送目标: ghcr.io/<仓库owner>/<image> (内置 GITHUB_TOKEN 认证, 无需额外 secret;
+# 命名空间自动取当前 GitHub 仓库 owner, GHCR 要求小写故统一转小写).
+name: Build CI images
+
+on:
+  # push main/develop 且相关文件变化时构建全部镜像
+  push:
+    branches: [main, develop]
+    paths:
+      - 'ocr/Dockerfile'
+      - 'reviewdog/Dockerfile'
+      - '.github/workflows/build-ci-images.yml'
+  # 手动触发: 可指定构建哪些镜像及临时版本
+  workflow_dispatch:
+    inputs:
+      images:
+        description: '构建哪些镜像 (逗号分隔: ocr,reviewdog; 留空默认全部)'
+        required: false
+        default: ''
+      ocr_version:
+        description: 'ocr 版本 (留空用 Dockerfile 内默认)'
+        required: false
+        default: ''
+      reviewdog_version:
+        description: 'reviewdog 版本 (留空用 Dockerfile 内默认)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: write # 推送 GHCR 需要
+
+jobs:
+  # 先按 dispatch 的 images 输入算出本次要构建的矩阵.
+  # 作业级 if 在 matrix 展开前求值、不能引用 matrix, 故用动态矩阵实现"指定构建某个镜像",
+  # 未选中的镜像不会出现在 build 作业里, 不会空跑 runner.
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      includes: ${{ steps.select.outputs.includes }}
+      # GHCR 命名空间 = 当前仓库 owner; GHCR 要求小写, 而 GitHub 表达式
+      # 无大小写转换函数, 故在 runner 上用 bash 转小写后传出
+      namespace: ${{ steps.select.outputs.namespace }}
+    steps:
+      - name: Select images
+        id: select
+        env:
+          IMAGES: ${{ inputs.images }}
+        run: |
+          set -euo pipefail
+          echo "namespace=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          all='[
+            {"dir": "ocr",       "image": "ocr-ci",       "version_arg": "OCR_VERSION",      "version_input": "ocr_version"},
+            {"dir": "reviewdog", "image": "reviewdog-ci", "version_arg": "REVIEWDOG_VERSION", "version_input": "reviewdog_version"}
+          ]'
+          selected=$(printf '%s' "$all" | jq -c --arg imgs "${IMAGES:-ocr,reviewdog}" \
+            '($imgs | split(",") | map(gsub("^\\s+|\\s+$";""))) as $set | map(select(.dir as $d | $set | index($d)))')
+          if [ "$(printf '%s' "$selected" | jq 'length')" -eq 0 ]; then
+            echo "images 输入未匹配到任何镜像, 可选值: ocr, reviewdog (当前输入: '${IMAGES}')" >&2
+            exit 1
+          fi
+          echo "includes=${selected}" >> "$GITHUB_OUTPUT"
+          echo "本次构建: $(printf '%s' "$selected" | jq -r 'map(.dir) | join(",")')"
+
+  build:
+    name: Build ${{ matrix.dir }}
+    needs: select
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.includes) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本来源: 手动触发时的 input 优先, 其次 Dockerfile 内 ARG 默认值.
+      # 本地构建走 compose/.env 传参, 与本 workflow 互不影响.
+      - name: Resolve version
+        id: version
+        env:
+          OVERRIDE: ${{ github.event.inputs[matrix.version_input] || '' }}
+        run: |
+          set -euo pipefail
+          version="${OVERRIDE}"
+          # 兼容按 Git tag 习惯填写的前缀 v (如 v0.21.3), 统一去掉
+          version="${version#v}"
+          if [ -z "${version}" ]; then
+            version=$(grep -m1 -oP '^ARG ${{ matrix.version_arg }}=\K[0-9][0-9A-Za-z.+-]*' '${{ matrix.dir }}/Dockerfile')
+          fi
+          [ -n "${version}" ] || { echo "未能从 Dockerfile 解析出 ${{ matrix.version_arg }} 默认版本" >&2; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "${{ matrix.dir }} 版本: ${version}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.dir }}
+          push: true
+          # Dockerfile 内 RUN 阶段自带可执行性自检(ocr --version / reviewdog --version), 构建失败即阻断推送
+          tags: ghcr.io/${{ needs.select.outputs.namespace }}/${{ matrix.image }}:${{ steps.version.outputs.version }}
+          build-args: |
+            ${{ matrix.version_arg }}=${{ steps.version.outputs.version }}

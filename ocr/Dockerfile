@@ -9,9 +9,12 @@ RUN apk add --no-cache git ca-certificates \
   && git --version \
   && git config --system --add safe.directory '*'
 
+
+# 国内网络可取消注释改用国内源; 默认官方源
+# ARG NPM_REGISTRY=https://registry.npmmirror.com/
 # 固定版本, 避免上游升级引入不可控变更
 ARG OCR_VERSION=1.12.13
-RUN npm install -g @alibaba-group/open-code-review@${OCR_VERSION} --registry=https://registry.npmmirror.com/ \
+RUN npm install -g @alibaba-group/open-code-review@${OCR_VERSION} --registry=${NPM_REGISTRY} \
   && npm cache clean --force \
   && ocr --version
 

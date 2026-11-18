@@ -12,8 +12,7 @@ reviewdog 官方不发镜像 (其目标场景是 GitHub Actions/Jenkins runner �
 | `docker-compose.yml` | 指定镜像名, `docker compose build` 即可构建                                            |
 | `.env.example`       | 复制为 `.env` 后维护 `REVIEWDOG_VERSION` / `REGISTRY`, 升级只改版本行                  |
 
-二进制取法: GitHub release 直连与 gh 镜像在当前网络不可达, goproxy.cn 可达,
-故经 `go install github.com/reviewdog/reviewdog/cmd/reviewdog@v<版本>` 源码编译 (纯 Go, 静态链接).
+二进制取法: 经 `go install github.com/reviewdog/reviewdog/cmd/reviewdog@v<版本>` 源码编译 (纯 Go, 静态链接).
 
 ## 构建与推送
 
