@@ -25,12 +25,13 @@ docker compose push
 
 ## 使用方式
 
-镜像 `ENTRYPOINT` 为 `reviewdog`, `WORKDIR` 为 `/src` (代码挂载点), 默认命令 `--help`.
+镜像 `ENTRYPOINT` 为 `sh -c` (reviewdog 只从 stdin 读输入, 文件位置参数被其静默忽略),
+`WORKDIR` 为 `/src` (代码挂载点), 默认命令 `reviewdog --help`.
 审查完成后, 在仓库根目录为 `/src` 的容器内执行:
 
 ```bash
-reviewdog -f=sarif -reporter=gitlab-mr-discussion -filter-mode=diff_context -fail-level=none \
-  < /src/ocr-review.sarif
+reviewdog -f=sarif -name=OpenCodeReview -reporter=gitlab-mr-discussion -filter-mode=diff_context \
+-fail-level=none < /src/ocr-review.sarif
 ```
 
 注意 reviewdog 只从 stdin 读取 findings: SARIF 文件必须用 shell 重定向接入 stdin,

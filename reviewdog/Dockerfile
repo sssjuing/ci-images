@@ -27,8 +27,13 @@ COPY --from=builder /go/bin/reviewdog /usr/local/bin/reviewdog
 RUN reviewdog --version
 
 # 工作目录即代码挂载点: 约定仓库挂载到 /src.
-# reviewdog 以 cwd 为仓库根跑 git diff; SARIF findings 由调用方从 stdin 传入.
+# reviewdog 以 cwd 为仓库根跑 git diff.
 WORKDIR /src
 
-ENTRYPOINT ["reviewdog"]
-CMD ["--help"]
+# 入口用 shell 而非直接 reviewdog: reviewdog 只从 stdin 读输入, 不接受文件
+# 位置参数 (位置参数被静默忽略), SARIF 文件须经 shell 重定向喂入 stdin.
+# 平台侧 Args 传完整命令串, 如:
+#   reviewdog -f=sarif ... < /src/.astro-cd/ocr-review.sarif
+# 重定向失败 (文件缺失) 时 sh 以非 0 退出, 不会静默退化成空输入 EOF.
+ENTRYPOINT ["sh", "-c"]
+CMD ["reviewdog --help"]
