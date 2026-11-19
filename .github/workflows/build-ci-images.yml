@@ -5,9 +5,9 @@
 name: Build CI images
 
 on:
-  # push main/develop 且相关文件变化时构建全部镜像
+  # push main 且相关文件变化时构建全部镜像
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - 'ocr/Dockerfile'
       - 'reviewdog/Dockerfile'
@@ -33,7 +33,10 @@ permissions:
   packages: write # 推送 GHCR 需要
 
 jobs:
-  # 先按 dispatch 的 images 输入算出本次要构建的矩阵.
+  # 先算出本次要构建的矩阵:
+  # - push: 比较 before..after, 只构建 Dockerfile 有变化的镜像; 新分支/强制推送等
+  #   无法比较的场景回退为全部构建.
+  # - workflow_dispatch: 按 images 输入选择 (留空全部).
   # 作业级 if 在 matrix 展开前求值、不能引用 matrix, 故用动态矩阵实现"指定构建某个镜像",
   # 未选中的镜像不会出现在 build 作业里, 不会空跑 runner.
   select:
@@ -44,10 +47,18 @@ jobs:
       # 无大小写转换函数, 故在 runner 上用 bash 转小写后传出
       namespace: ${{ steps.select.outputs.namespace }}
     steps:
+      # 取完整历史, 用于 diff 本次 push 的 before..after
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Select images
         id: select
         env:
           IMAGES: ${{ inputs.images }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           echo "namespace=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
@@ -55,7 +66,30 @@ jobs:
             {"dir": "ocr",       "image": "ocr-ci",       "version_arg": "OCR_VERSION",      "version_input": "ocr_version"},
             {"dir": "reviewdog", "image": "reviewdog-ci", "version_arg": "REVIEWDOG_VERSION", "version_input": "reviewdog_version"}
           ]'
-          selected=$(printf '%s' "$all" | jq -c --arg imgs "${IMAGES:-ocr,reviewdog}" \
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            requested="${IMAGES:-ocr,reviewdog}"
+          else
+            requested=""
+            # 新分支(全 0 SHA)/强制推送等取不到 before 的场景, 回退为全部构建
+            if [ -z "${BEFORE_SHA}" ] || [ "${BEFORE_SHA}" = "0000000000000000000000000000000000000000" ] \
+              || ! changed=$(git diff --name-only "${BEFORE_SHA}" "${AFTER_SHA}"); then
+              requested="ocr,reviewdog"
+            else
+              if printf '%s\n' "${changed}" | grep -qx 'ocr/Dockerfile'; then
+                requested="ocr"
+              fi
+              if printf '%s\n' "${changed}" | grep -qx 'reviewdog/Dockerfile'; then
+                requested="${requested:+${requested},}reviewdog"
+              fi
+            fi
+            if [ -z "${requested}" ]; then
+              echo "includes=[]" >> "$GITHUB_OUTPUT"
+              echo "Dockerfile 无变化, 跳过镜像构建"
+              exit 0
+            fi
+            echo "Dockerfile 变更触发的镜像: ${requested}"
+          fi
+          selected=$(printf '%s' "$all" | jq -c --arg imgs "${requested}" \
             '($imgs | split(",") | map(gsub("^\\s+|\\s+$";""))) as $set | map(select(.dir as $d | $set | index($d)))')
           if [ "$(printf '%s' "$selected" | jq 'length')" -eq 0 ]; then
             echo "images 输入未匹配到任何镜像, 可选值: ocr, reviewdog (当前输入: '${IMAGES}')" >&2
@@ -67,6 +101,8 @@ jobs:
   build:
     name: Build ${{ matrix.dir }}
     needs: select
+    # push 只改了 workflow 自身、没有 Dockerfile 变化时 includes 为 [], 跳过构建
+    if: needs.select.outputs.includes != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
