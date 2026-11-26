@@ -4,15 +4,15 @@
 # 版本号统一在 .env 中维护 (OCR_VERSION, 从 .env.example 复制)
 services:
   ocr:
-    image: ${REGISTRY:-}/ocr-ci:${OCR_VERSION:-1.12.13}
+    image: ${REGISTRY:-}/ocr-ci:${OCR_VERSION:-1.14.4}
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        OCR_VERSION: ${OCR_VERSION:-1.12.13}
+        OCR_VERSION: ${OCR_VERSION:-1.14.4}
     # 默认跑 llm test 连通性测试, 跑完即退; 执行其他子命令时覆盖:
     # docker compose run --rm ocr review --from main --to HEAD
-    command: ['llm', 'test']
+    command: ["llm", "test"]
     environment:
       # 本地手动运行 (llm test / review / scan) 的 LLM 端点, 值从 .env 插值;
       # 平台 CI 扫描不经过本文件, 由 astro-cd 顶层 ocr 配置段注入
@@ -20,3 +20,4 @@ services:
       OCR_LLM_TOKEN: ${OCR_LLM_TOKEN:-}
       OCR_LLM_MODEL: ${OCR_LLM_MODEL:-}
       OCR_USE_ANTHROPIC: ${OCR_USE_ANTHROPIC:-false}
+      OCR_LANGUAGE: ${OCR_LANGUAGE:-中文}
