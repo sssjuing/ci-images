@@ -13,7 +13,7 @@ RUN apk add --no-cache git ca-certificates \
 # 国内网络可取消注释改用国内源; 默认官方源
 # ARG NPM_REGISTRY=https://registry.npmmirror.com/
 # 固定版本, 避免上游升级引入不可控变更
-ARG OCR_VERSION=1.12.13
+ARG OCR_VERSION=1.14.4
 RUN npm install -g @alibaba-group/open-code-review@${OCR_VERSION} --registry=${NPM_REGISTRY} \
   && npm cache clean --force \
   && ocr --version
@@ -31,6 +31,10 @@ WORKDIR /src
 # .astro-cd 目录. 路径须与 internal/pkg/ci/codescan/ocr.go 的 --output 保持同步.
 # mkdir 用 ";" 而非 "&&" 且忽略失败: /src 只读挂载等场景下不挡
 # --help/llm test 等与输出目录无关的命令, 真写不出时由 ocr 自身报错.
+# OCR_LANGUAGE 非空时先写入 ocr 用户配置 (~/.opencodereview/config.json),
+# 指定审查结果语言 (如 zh); 未设置时保持 ocr 默认. config set 的确认行
+# 重定向到 /dev/null, 避免污染 --format json/sarif 直接写 stdout 的输出;
+# 写入失败 (如 HOME 只读) 只影响语言设置, 不阻断后续命令.
 # 末位 "ocr" 是 $0, CMD/Args 经 "$@" 透传, exec 后 ocr 即 PID 1, 信号与退出码不变.
-ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /src/.astro-cd 2>/dev/null; exec ocr \"$@\"", "ocr"]
+ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /src/.astro-cd 2>/dev/null; if [ -n \"$OCR_LANGUAGE\" ]; then ocr config set language \"$OCR_LANGUAGE\" >/dev/null; fi; exec ocr \"$@\"", "ocr"]
 CMD ["--help"]

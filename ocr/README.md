@@ -45,7 +45,7 @@ docker run --rm \
   -e OCR_LLM_TOKEN="sk-..." \
   -e OCR_LLM_MODEL="deepseek-chat" \
   -e OCR_USE_ANTHROPIC="false" \
-  registry.internal/your-team/ocr-ci:1.12.13 \
+  registry.internal/your-team/ocr-ci:1.14.4 \
   review --from main --to HEAD --format sarif --output review.sarif
 
 # 全量扫描指定目录 (审计陌生代码库, 无需 diff)
@@ -55,7 +55,7 @@ docker run --rm \
   -e OCR_LLM_TOKEN="sk-..." \
   -e OCR_LLM_MODEL="deepseek-chat" \
   -e OCR_USE_ANTHROPIC="false" \
-  registry.internal/your-team/ocr-ci:1.12.13 \
+  registry.internal/your-team/ocr-ci:1.14.4 \
   scan --path internal --format sarif --output scan.sarif
 ```
 
@@ -70,7 +70,7 @@ docker run --rm \
   -e OCR_LLM_TOKEN="sk-..." \
   -e OCR_LLM_MODEL="deepseek-chat" \
   -e OCR_USE_ANTHROPIC="false" \
-  registry.internal/your-team/ocr-ci:1.12.13 \
+  registry.internal/your-team/ocr-ci:1.14.4 \
   llm test
 ```
 
